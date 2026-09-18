@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Hunting Friends</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #17231a;
+    --bg-panel: #1e2e22;
+    --bg-raised: #24352a;
+    --line: #3a4a3d;
+    --ink: #e9e4d6;
+    --ink-dim: #a7ada0;
+    --moss: #6b8156;
+    --amber: #c98a41;
+    --rust: #a5583a;
+    --font-display: Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 22px 16px 60px; }
+
+  header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 28px; margin: 0; }
+  .wordmark em { font-style: italic; color: var(--amber); }
+  .tagline { font-size: 13px; color: var(--ink-dim); margin: 2px 0 0; }
+  .status-pill { font-size: 12px; color: var(--ink-dim); border: 1px solid var(--line); padding: 5px 11px; border-radius: 100px; white-space: nowrap; }
+  .status-pill.live { color: var(--moss); border-color: var(--moss); }
+
+  .card { background: var(--bg-panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 18px; }
+  .card p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; color: var(--ink-dim); }
+  .row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 140px; }
+  label { display: block; font-size: 12px; color: var(--ink-dim); margin-bottom: 4px; }
+  input[type="text"] {
+    width: 100%; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; color: var(--ink); font-size: 14px;
+  }
+  input[type="text"]:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
+  button {
+    font-weight: 600; font-size: 14px; border-radius: 9px; border: none;
+    padding: 11px 18px; cursor: pointer;
+  }
+  .btn-primary { background: var(--amber); color: #1a1208; }
+  .btn-primary:disabled { background: var(--bg-raised); color: var(--ink-dim); }
+  .btn-ghost { background: transparent; color: var(--rust); border: 1px solid var(--line); }
+  .code-display {
+    font-family: monospace; font-size: 20px; letter-spacing: 3px; color: var(--amber);
+    background: var(--bg-raised); border: 1px dashed var(--line); border-radius: 8px;
+    padding: 10px 14px; text-align: center; margin-bottom: 10px;
+  }
+
+  #map {
+    height: 62vh; min-height: 420px; max-height: 680px;
+    width: calc(100% + 32px); margin: 0 -16px;
+    border-radius: 0; border: 1px solid var(--line); border-left: none; border-right: none;
+  }
+
+  .list-section h2 { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin: 18px 0 10px; }
+  .friend-row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); }
+  .friend-row:last-child { border-bottom: none; }
+  .friend-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
+  .friend-dot.you { background: var(--moss); }
+  .friend-dot.stale { background: var(--ink-dim); }
+  .friend-main { flex: 1; min-width: 0; }
+  .friend-name { font-size: 14.5px; font-weight: 600; }
+  .friend-name .you-tag { font-weight: 400; color: var(--moss); font-size: 12.5px; margin-left: 6px; }
+  .friend-meta { font-size: 12.5px; color: var(--ink-dim); margin-top: 1px; }
+  .empty-note { color: var(--ink-dim); font-size: 14px; padding: 6px 4px; }
+  footer.foot { margin-top: 24px; font-size: 12px; color: var(--ink-dim); text-align: center; }
+  a { color: var(--amber); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <p class="wordmark">Hunting <em>Friends</em></p>
+      <p class="tagline">Se vilka som är ute — och var</p>
+    </div>
+    <span class="status-pill" id="statusPill">Ej ansluten</span>
+  </header>
+
+  <section class="card" id="groupCard">
+    <p>Skapa en grupp och dela koden med de andra jägarna — alla med samma kod ser varandra på kartan. Koden fungerar som ett enkelt lösenord, håll den inom laget.</p>
+    <div class="code-display" id="codeDisplay">——————</div>
+    <div class="row">
+      <div>
+        <label for="codeInput">Gruppkod</label>
+        <input type="text" id="codeInput" placeholder="t.ex. algskog24">
+      </div>
+      <div>
+        <label for="nameInput">Ditt namn</label>
+        <input type="text" id="nameInput" placeholder="Namn som andra ser">
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-primary" id="joinGroupBtn">Anslut till grupp</button>
+      <button class="btn-ghost" id="newCodeBtn" type="button">Skapa ny kod</button>
+    </div>
+  </section>
+
+  <section class="card" id="shareCard" style="display:none;">
+    <p id="joinText">Dela din position så syns du för de andra i gruppen på kartan.</p>
+    <div class="row">
+      <button class="btn-primary" id="joinBtn">Dela min plats</button>
+      <button class="btn-ghost" id="leaveBtn" style="display:none;">Sluta dela</button>
+    </div>
+  </section>
+
+  <div id="map"></div>
+
+  <section class="list-section">
+    <h2 style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+      <span>Jägare i gruppen</span>
+      <button class="btn-ghost" id="refreshBtn" type="button" style="font-size:12px; padding:6px 12px;">Uppdatera nu</button>
+    </h2>
+    <div id="friendList"><p class="empty-note">Anslut till en grupp för att se vilka som är ute.</p></div>
+  </section>
+
+  <footer class="foot">
+    Kartdata: © OpenStreetMap-bidragsgivare, SRTM · Kartbild: © OpenTopoMap (CC-BY-SA)<br>
+    Positioner delas via en enkel öppen meddelandetjänst (ntfy.sh) under er gruppkod — behandla koden som ett lösenord.
+  </footer>
+</div>
+
+<script>
+(function () {
+  const STALE_MS = 20 * 60 * 1000;
+  const POLL_MS = 6000;
+
+  let myId = localStorage.getItem('hf_id');
+  if (!myId) {
+    myId = 'h-' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('hf_id', myId);
+  }
+
+  let groupCode = localStorage.getItem('hf_group') || '';
+  let watchId = null;
+  let pollTimer = null;
+  let lastWritten = null;
+  let peers = {}; // id -> {name, lat, lng, updatedAt}
+  let map, markersLayer;
+
+  const $ = (s) => document.querySelector(s);
+  const statusPill = $('#statusPill');
+  const codeInput = $('#codeInput');
+  const codeDisplay = $('#codeDisplay');
+  const nameInput = $('#nameInput');
+  const joinGroupBtn = $('#joinGroupBtn');
+  const newCodeBtn = $('#newCodeBtn');
+  const shareCard = $('#shareCard');
+  const joinText = $('#joinText');
+  const joinBtn = $('#joinBtn');
+  const leaveBtn = $('#leaveBtn');
+  const friendList = $('#friendList');
+
+  nameInput.value = localStorage.getItem('hf_name') || '';
+
+  function randomCode() {
+    const words = ['algskog', 'granmark', 'rävstig', 'björnpass', 'tjäderhed', 'vildmark'];
+    return words[Math.floor(Math.random() * words.length)] + Math.floor(Math.random() * 90 + 10);
+  }
+
+  function toRad(d) { return d * Math.PI / 180; }
+  function haversineM(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  function formatDistance(m) {
+    if (m < 1000) return Math.round(m / 10) * 10 + ' m';
+    return (m / 1000).toFixed(1) + ' km';
+  }
+  function timeAgo(ts) {
+    if (!ts) return 'okänt';
+    const mins = Math.round((Date.now() - ts) / 60000);
+    if (mins < 1) return 'just nu';
+    if (mins < 60) return mins + ' min sedan';
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + ' tim sedan';
+    return Math.round(hrs / 24) + ' dygn sedan';
+  }
+  function setStatus(text, live) {
+    statusPill.textContent = text;
+    statusPill.classList.toggle('live', !!live);
+  }
+
+  function initMap() {
+    map = L.map('map', { zoomControl: true }).setView([59.33, 18.06], 6);
+    L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      maxZoom: 17,
+      attribution: '&copy; OpenStreetMap-bidragsgivare, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
+    }).addTo(map);
+    markersLayer = L.layerGroup().addTo(map);
+  }
+
+  function topicUrl(path) {
+    return 'https://ntfy.sh/hf-' + encodeURIComponent(groupCode) + path;
+  }
+
+  async function publishPosition(lat, lng) {
+    const name = nameInput.value.trim() || 'Okänd jägare';
+    const payload = { id: myId, name, lat, lng, updatedAt: Date.now() };
+    try {
+      await fetch(topicUrl(''), {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store'
+      });
+      lastWritten = { lat, lng, ts: Date.now() };
+      peers[myId] = payload;
+      renderAll();
+    } catch (e) {
+      setStatus('Kunde inte skicka plats', false);
+    }
+  }
+
+  function movedEnough(lat, lng) {
+    if (!lastWritten) return true;
+    return haversineM(lastWritten.lat, lastWritten.lng, lat, lng) > 30 || (Date.now() - lastWritten.ts) > 60000;
+  }
+
+  async function pollPeers() {
+    if (!groupCode) return;
+    try {
+      const res = await fetch(topicUrl('/json?poll=1&since=30m&_=' + Date.now()), {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      const text = await res.text();
+      text.trim().split('\n').filter(Boolean).forEach((line) => {
+        try {
+          const evt = JSON.parse(line);
+          if (evt.message) {
+            const data = JSON.parse(evt.message);
+            if (data && data.id && typeof data.lat === 'number') {
+              const existing = peers[data.id];
+              if (!existing || data.updatedAt > existing.updatedAt) peers[data.id] = data;
+            }
+          }
+        } catch (e) {}
+      });
+      setStatus(watchId != null ? 'Delar plats' : 'Ansluten till ' + groupCode, watchId != null);
+      renderAll();
+    } catch (e) {
+      setStatus('Ingen kontakt just nu', false);
+    }
+  }
+
+  function renderAll() {
+    const me = peers[myId] || null;
+    const entries = Object.values(peers).map((p) => {
+      const isMe = p.id === myId;
+      let distanceM = null;
+      if (me && !isMe) distanceM = haversineM(me.lat, me.lng, p.lat, p.lng);
+      return { ...p, isMe, distanceM };
+    });
+    entries.sort((a, b) => {
+      if (a.isMe) return -1;
+      if (b.isMe) return 1;
+      if (a.distanceM == null) return 1;
+      if (b.distanceM == null) return -1;
+      return a.distanceM - b.distanceM;
+    });
+    renderList(entries);
+    renderMarkers(entries);
+  }
+
+  function renderList(entries) {
+    if (!entries.length) {
+      friendList.innerHTML = '<p class="empty-note">Ingen har delat sin plats i den här gruppen än.</p>';
+      return;
+    }
+    friendList.innerHTML = '';
+    entries.forEach((e) => {
+      const stale = e.updatedAt && (Date.now() - e.updatedAt > STALE_MS);
+      const row = document.createElement('div');
+      row.className = 'friend-row';
+      const dot = document.createElement('div');
+      dot.className = 'friend-dot' + (e.isMe ? ' you' : stale ? ' stale' : '');
+      row.appendChild(dot);
+      const main = document.createElement('div');
+      main.className = 'friend-main';
+      const nameLine = document.createElement('div');
+      nameLine.className = 'friend-name';
+      nameLine.textContent = e.name;
+      if (e.isMe) {
+        const tag = document.createElement('span');
+        tag.className = 'you-tag';
+        tag.textContent = 'Du';
+        nameLine.appendChild(tag);
+      }
+      const meta = document.createElement('div');
+      meta.className = 'friend-meta';
+      if (e.isMe) meta.textContent = 'Delar din plats — ' + timeAgo(e.updatedAt);
+      else if (e.distanceM != null) meta.textContent = formatDistance(e.distanceM) + ' bort — uppdaterad ' + timeAgo(e.updatedAt);
+      else meta.textContent = 'Uppdaterad ' + timeAgo(e.updatedAt);
+      main.appendChild(nameLine);
+      main.appendChild(meta);
+      row.appendChild(main);
+      friendList.appendChild(row);
+    });
+  }
+
+  function renderMarkers(entries) {
+    markersLayer.clearLayers();
+    if (!entries.length) return;
+    const bounds = [];
+    entries.forEach((e) => {
+      const color = e.isMe ? '#6b8156' : (e.updatedAt && Date.now() - e.updatedAt > STALE_MS ? '#a7ada0' : '#c98a41');
+      const marker = L.circleMarker([e.lat, e.lng], {
+        radius: e.isMe ? 9 : 7, color: '#17231a', weight: 2, fillColor: color, fillOpacity: 1
+      }).bindTooltip(e.name + (e.isMe ? ' (du)' : ''), { permanent: false });
+      marker.addTo(markersLayer);
+      bounds.push([e.lat, e.lng]);
+    });
+    if (bounds.length === 1) map.setView(bounds[0], 14);
+    else map.fitBounds(bounds, { padding: [40, 40] });
+  }
+
+  function startSharing() {
+    if (!navigator.geolocation) { setStatus('Plats stöds ej', false); return; }
+    joinBtn.style.display = 'none';
+    leaveBtn.style.display = 'inline-block';
+    joinText.textContent = 'Du delar din plats med gruppen.';
+    setStatus('Delar plats', true);
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (movedEnough(latitude, longitude)) publishPosition(latitude, longitude);
+      },
+      (err) => setStatus(err.code === 1 ? 'Plats nekad' : 'Platsfel', false),
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+    );
+  }
+
+  function stopSharing() {
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    joinBtn.style.display = 'inline-block';
+    leaveBtn.style.display = 'none';
+    joinText.textContent = 'Dela din position så syns du för de andra i gruppen på kartan.';
+    setStatus('Ansluten till ' + groupCode, false);
+    delete peers[myId];
+    renderAll();
+  }
+
+  function joinGroup() {
+    const code = codeInput.value.trim();
+    if (!code) return;
+    groupCode = code;
+    localStorage.setItem('hf_group', code);
+    localStorage.setItem('hf_name', nameInput.value.trim());
+    codeDisplay.textContent = code;
+    shareCard.style.display = 'block';
+    peers = {};
+    setStatus('Ansluten till ' + code, false);
+    pollPeers();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollPeers, POLL_MS);
+  }
+
+  joinGroupBtn.addEventListener('click', joinGroup);
+  newCodeBtn.addEventListener('click', () => { codeInput.value = randomCode(); });
+  joinBtn.addEventListener('click', startSharing);
+  leaveBtn.addEventListener('click', stopSharing);
+  $('#refreshBtn').addEventListener('click', () => { if (groupCode) pollPeers(); });
+
+  // iOS (and other browsers) pause background timers and cache GET responses
+  // aggressively, so force an immediate refresh whenever the page becomes
+  // visible again or is restored from the back-forward cache.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && groupCode) pollPeers();
+  });
+  window.addEventListener('pageshow', (ev) => {
+    if (groupCode) pollPeers();
+    if (ev.persisted && groupCode) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollPeers, POLL_MS);
+    }
+  });
+  window.addEventListener('focus', () => { if (groupCode) pollPeers(); });
+
+  initMap();
+  window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
+
+  if (groupCode) {
+    codeInput.value = groupCode;
+    joinGroup();
+  } else {
+    codeInput.value = randomCode();
+  }
+})();
+</script>
+</body>
+</html>
